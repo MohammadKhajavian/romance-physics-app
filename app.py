@@ -1,4 +1,4 @@
-# app.py - USING OFFICIAL STREAMLIT SUPABASE CONNECTION
+# app.py - WORKING WITH SUPABASE 1.2.0
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,30 +12,33 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.dummy import DummyClassifier
 from sklearn.dummy import DummyRegressor
 
-# Import Streamlit's official Supabase connection
-from st_supabase_connection import SupabaseConnection
+# Supabase import for version 1.2.0
+from supabase import create_client, Client
 
 # ------------------ PAGE CONFIG ------------------
 st.set_page_config(page_title="Oxygen Bond Predictor", page_icon="⚛️", layout="centered")
 
-# ------------------ SUPABASE SETUP (Official Streamlit Connection) ------------------
+# ------------------ SUPABASE SETUP ------------------
 @st.cache_resource
 def init_supabase():
-    """Initialize connection to Supabase using Streamlit's official connection"""
+    """Initialize connection to Supabase"""
     try:
-        # This reads from secrets.toml automatically
-        conn = st.connection("supabase", type=SupabaseConnection)
-        return conn
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        # Clean up URL - remove any trailing slashes or /rest/v1
+        url = url.rstrip('/')
+        if url.endswith('/rest/v1'):
+            url = url.replace('/rest/v1', '')
+        return create_client(url, key)
     except Exception as e:
-        st.error(f"Cannot connect to Supabase. Please check your secrets. Error: {e}")
+        st.error(f"Cannot connect to Supabase: {e}")
         return None
 
-# Initialize Supabase connection
-supabase_conn = init_supabase()
+# Initialize Supabase
+supabase = init_supabase()
 
 # ------------------ PHYSICS KERNEL FUNCTIONS ------------------
 def calculate_valence_instability(age, risk_tolerance):
-    """Oxygen analogy: Younger + High Risk = High Energy Orbital"""
     try:
         age_factor = (30 - min(age, 30)) / 30
         risk_factor = risk_tolerance / 5
@@ -44,7 +47,6 @@ def calculate_valence_instability(age, risk_tolerance):
         return 0.5
 
 def calculate_bond_resonance(duration, intensity):
-    """How well the past bond matched - O2 bond strength analogy"""
     try:
         duration_factor = min(duration, 120) / 120
         intensity_factor = intensity / 10
@@ -53,7 +55,6 @@ def calculate_bond_resonance(duration, intensity):
         return 0.5
 
 def calculate_recovery_entropy(breakup_shock, current_age):
-    """Higher shock = harder to bond again (Entropy increase)"""
     try:
         return round(breakup_shock / 10, 3)
     except:
@@ -61,12 +62,10 @@ def calculate_recovery_entropy(breakup_shock, current_age):
 
 # ------------------ FETCH DATA FROM SUPABASE ------------------
 def fetch_all_data():
-    """Get all user data from Supabase cloud database"""
-    if supabase_conn is None:
+    if supabase is None:
         return pd.DataFrame()
     try:
-        # Using the official connection's table() method
-        response = supabase_conn.table("users").select("*").execute()
+        response = supabase.table("users").select("*").execute()
         if response.data:
             return pd.DataFrame(response.data)
         else:
@@ -77,13 +76,11 @@ def fetch_all_data():
 
 # ------------------ TRAINING FUNCTION ------------------
 def train_models():
-    """Train ML models on ALL existing data from Supabase"""
     df = fetch_all_data()
     
     if len(df) < 3:
         return DummyClassifier(strategy="most_frequent"), DummyRegressor(strategy="mean")
     
-    # Create physics-informed features
     df['valence_instability'] = df.apply(
         lambda x: calculate_valence_instability(x['age'], x['risk_tolerance']), axis=1
     )
@@ -114,13 +111,11 @@ def train_models():
 
 # ------------------ SAVE DATA TO SUPABASE ------------------
 def save_to_supabase(data):
-    """Save user prediction to cloud database"""
-    if supabase_conn is None:
+    if supabase is None:
         st.warning("Cannot save: No database connection")
         return False
     try:
-        # Using the official connection's table() method
-        result = supabase_conn.table("users").insert(data).execute()
+        result = supabase.table("users").insert(data).execute()
         return True
     except Exception as e:
         st.error(f"Failed to save: {e}")
@@ -131,7 +126,6 @@ st.title("⚛️ Quantum Romance Predictor")
 st.caption("Based on Atomic Interaction Modelling (O₂ Bond Analogy)")
 st.markdown("---")
 
-# Session ID for tracking
 if 'session_id' not in st.session_state:
     st.session_state['session_id'] = hashlib.md5(str(datetime.now()).encode()).hexdigest()
 
@@ -143,8 +137,7 @@ with st.form("prediction_form"):
     risk = st.select_slider(
         "Risk Tolerance (1=Very Cautious, 5=Very Adventurous)",
         options=[1, 2, 3, 4, 5],
-        value=3,
-        help="Oxygen analogy: Higher risk = Higher orbital energy = More likely to bond"
+        value=3
     )
     
     energy_options = {"Low Energy (1)": 1, "Medium Energy (3)": 3, "High Energy (5)": 5}
@@ -165,20 +158,18 @@ with st.form("prediction_form"):
     submitted = st.form_submit_button("🔮 Predict My Future")
 
 if submitted:
-    # Calculate physics features
     v_inst = calculate_valence_instability(age, risk)
     b_res = calculate_bond_resonance(love_duration, intensity)
     r_ent = calculate_recovery_entropy(breakup_shock, age)
     
     st.markdown("---")
-    st.subheader("🧪 Atomic Analysis (Physics-Informed Features)")
+    st.subheader("🧪 Atomic Analysis")
     
     col1, col2, col3 = st.columns(3)
     col1.metric("⚡ Valence Instability", f"{v_inst:.3f}")
     col2.metric("🔗 Bond Resonance", f"{b_res:.3f}")
     col3.metric("🌪️ Recovery Entropy", f"{r_ent:.3f}")
     
-    # Train models on ALL previous data
     classification_model, regression_model = train_models()
     input_features = [[v_inst, b_res, r_ent, age]]
     
@@ -186,7 +177,6 @@ if submitted:
         will_happen = classification_model.predict(input_features)[0]
         time_months = int(regression_model.predict(input_features)[0]) if will_happen == 1 else 0
     except:
-        # Fallback prediction
         oxygen_bond_score = (v_inst * 0.4) + (b_res * 0.4) - (r_ent * 0.2)
         will_happen = 1 if oxygen_bond_score > 0.45 else 0
         time_months = max(3, min(12, int(24 - (age / 5)))) if will_happen == 1 else 0
@@ -202,7 +192,6 @@ if submitted:
         st.error("❌ **PREDICTION: Low probability of a new relationship soon**")
         predicted_time_str = "N/A"
     
-    # SAVE TO CLOUD DATABASE (PERMANENT)
     user_data = {
         "timestamp": datetime.now().isoformat(),
         "session_id": st.session_state['session_id'],
@@ -218,13 +207,11 @@ if submitted:
     }
     
     if save_to_supabase(user_data):
-        # Get total count to show learning progress
         df_all = fetch_all_data()
-        st.caption(f"✓ Data saved to cloud! Total {len(df_all)} users. Model improves with each new user!")
+        st.caption(f"✓ Data saved to cloud! Total {len(df_all)} users.")
     else:
-        st.warning("Data could not be saved. Please try again.")
+        st.warning("Data could not be saved.")
 
-# Show current database size
 df_all = fetch_all_data()
 st.markdown("---")
-st.caption(f"📊 **Continuous Learning Active:** {len(df_all)} total user records | Model retrains automatically")
+st.caption(f"📊 **Continuous Learning Active:** {len(df_all)} total user records")
