@@ -1,4 +1,4 @@
-# app.py - WITH PERMANENT SUPABASE DATABASE
+# app.py - COMPLETE WORKING VERSION WITH FIXED SUPABASE
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -15,14 +15,27 @@ from sklearn.dummy import DummyRegressor
 # Supabase import
 from supabase import create_client, Client
 
+# ------------------ PAGE CONFIG ------------------
+st.set_page_config(page_title="Oxygen Bond Predictor", page_icon="⚛️", layout="centered")
+
 # ------------------ SUPABASE SETUP (Permanent Storage) ------------------
 @st.cache_resource
 def init_supabase():
     """Initialize connection to Supabase (cloud database)"""
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        # Remove any trailing slashes from URL
+        url = url.rstrip('/')
+        # Remove /rest/v1/ if accidentally included
+        if url.endswith('/rest/v1'):
+            url = url.replace('/rest/v1', '')
+        return create_client(url, key)
+    except Exception as e:
+        st.error(f"Cannot connect to Supabase. Please check your secrets. Error: {e}")
+        return None
 
+# Initialize Supabase
 supabase = init_supabase()
 
 # ------------------ PHYSICS KERNEL FUNCTIONS ------------------
@@ -54,12 +67,14 @@ def calculate_recovery_entropy(breakup_shock, current_age):
 # ------------------ FETCH DATA FROM SUPABASE ------------------
 def fetch_all_data():
     """Get all user data from Supabase cloud database"""
+    if supabase is None:
+        return pd.DataFrame()
     try:
         response = supabase.table("users").select("*").execute()
         if response.data:
             return pd.DataFrame(response.data)
         else:
-            return pd.DataFrame()  # Empty DataFrame
+            return pd.DataFrame()
     except Exception as e:
         st.warning(f"Could not fetch data: {e}")
         return pd.DataFrame()
@@ -104,6 +119,9 @@ def train_models():
 # ------------------ SAVE DATA TO SUPABASE ------------------
 def save_to_supabase(data):
     """Save user prediction to cloud database"""
+    if supabase is None:
+        st.warning("Cannot save: No database connection")
+        return False
     try:
         result = supabase.table("users").insert(data).execute()
         return True
@@ -112,8 +130,6 @@ def save_to_supabase(data):
         return False
 
 # ------------------ UI (FRONTEND) ------------------
-st.set_page_config(page_title="Oxygen Bond Predictor", page_icon="⚛️", layout="centered")
-
 st.title("⚛️ Quantum Romance Predictor")
 st.caption("Based on Atomic Interaction Modelling (O₂ Bond Analogy)")
 st.markdown("---")
