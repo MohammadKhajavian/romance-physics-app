@@ -1,4 +1,4 @@
-# app.py - COMPLETE WORKING VERSION WITH FIXED SUPABASE
+# app.py - USING OFFICIAL STREAMLIT SUPABASE CONNECTION
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,31 +12,26 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.dummy import DummyClassifier
 from sklearn.dummy import DummyRegressor
 
-# Supabase import
-from supabase import create_client, Client
+# Import Streamlit's official Supabase connection
+from st_supabase_connection import SupabaseConnection
 
 # ------------------ PAGE CONFIG ------------------
 st.set_page_config(page_title="Oxygen Bond Predictor", page_icon="⚛️", layout="centered")
 
-# ------------------ SUPABASE SETUP (Permanent Storage) ------------------
+# ------------------ SUPABASE SETUP (Official Streamlit Connection) ------------------
 @st.cache_resource
 def init_supabase():
-    """Initialize connection to Supabase (cloud database)"""
+    """Initialize connection to Supabase using Streamlit's official connection"""
     try:
-        url = st.secrets["SUPABASE_URL"]
-        key = st.secrets["SUPABASE_KEY"]
-        # Remove any trailing slashes from URL
-        url = url.rstrip('/')
-        # Remove /rest/v1/ if accidentally included
-        if url.endswith('/rest/v1'):
-            url = url.replace('/rest/v1', '')
-        return create_client(url, key)
+        # This reads from secrets.toml automatically
+        conn = st.connection("supabase", type=SupabaseConnection)
+        return conn
     except Exception as e:
         st.error(f"Cannot connect to Supabase. Please check your secrets. Error: {e}")
         return None
 
-# Initialize Supabase
-supabase = init_supabase()
+# Initialize Supabase connection
+supabase_conn = init_supabase()
 
 # ------------------ PHYSICS KERNEL FUNCTIONS ------------------
 def calculate_valence_instability(age, risk_tolerance):
@@ -67,10 +62,11 @@ def calculate_recovery_entropy(breakup_shock, current_age):
 # ------------------ FETCH DATA FROM SUPABASE ------------------
 def fetch_all_data():
     """Get all user data from Supabase cloud database"""
-    if supabase is None:
+    if supabase_conn is None:
         return pd.DataFrame()
     try:
-        response = supabase.table("users").select("*").execute()
+        # Using the official connection's table() method
+        response = supabase_conn.table("users").select("*").execute()
         if response.data:
             return pd.DataFrame(response.data)
         else:
@@ -119,11 +115,12 @@ def train_models():
 # ------------------ SAVE DATA TO SUPABASE ------------------
 def save_to_supabase(data):
     """Save user prediction to cloud database"""
-    if supabase is None:
+    if supabase_conn is None:
         st.warning("Cannot save: No database connection")
         return False
     try:
-        result = supabase.table("users").insert(data).execute()
+        # Using the official connection's table() method
+        result = supabase_conn.table("users").insert(data).execute()
         return True
     except Exception as e:
         st.error(f"Failed to save: {e}")
